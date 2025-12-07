@@ -2,9 +2,7 @@
 from typing import Optional, List
 import numpy as np
 from PIL import Image
-from io import BytesIO
 from sentence_transformers import SentenceTransformer
-import torch
 
 from shared.config import settings
 

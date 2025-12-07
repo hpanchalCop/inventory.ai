@@ -1,11 +1,6 @@
 """Tests for ML service."""
 import pytest
 import numpy as np
-import sys
-import os
-
-# Add parent directory to path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from shared.ml_service import EmbeddingService
 
