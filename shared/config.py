@@ -7,7 +7,13 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
     
     # Database
-    database_url: str = "postgresql://user:password@localhost:5432/inventory_db"
+    # Default local development DB (convenient fallback).
+    # IMPORTANT: This default is intended for local development only.
+    # When deploying to AWS (RDS), set the `DATABASE_URL` environment
+    # variable (or update `.env`) to point to your RDS Postgres endpoint
+    # with the appropriate credentials. Do NOT commit production credentials
+    # into source control.
+    database_url: str = "postgresql://postgres:postgres@localhost:5432/inventory_db"
     
     # AWS
     aws_access_key_id: Optional[str] = None
