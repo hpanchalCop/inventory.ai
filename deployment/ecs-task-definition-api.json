@@ -31,11 +31,11 @@
         },
         {
           "name": "AUTH0_DOMAIN",
-          "value": "your-tenant.auth0.com"
+          "value": "dev-8jwmstalyswjk6k6.auth0.com"
         },
         {
           "name": "AUTH0_API_AUDIENCE",
-          "value": "https://inventory-ai-api"
+          "value": "https://dev-8jwmstalyswjk6k6.us.auth0.com/api/v2/"
         },
         {
           "name": "CLOUDWATCH_LOG_GROUP",

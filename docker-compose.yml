@@ -5,15 +5,15 @@ services:
   postgres:
     image: ankane/pgvector:latest
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
       POSTGRES_DB: inventory_db
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d inventory_db"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d inventory_db"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -26,13 +26,13 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql://user:password@postgres:5432/inventory_db
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/inventory_db
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
       AWS_REGION: ${AWS_REGION:-us-east-1}
       S3_BUCKET_NAME: ${S3_BUCKET_NAME:-inventory-ai-bucket}
-      AUTH0_DOMAIN: ${AUTH0_DOMAIN:-your-tenant.auth0.com}
-      AUTH0_API_AUDIENCE: ${AUTH0_API_AUDIENCE:-https://inventory-ai-api}
+      AUTH0_DOMAIN: ${AUTH0_DOMAIN:-dev-8jwmstalyswjk6k6.auth0.com}
+      AUTH0_API_AUDIENCE: ${AUTH0_API_AUDIENCE:-https://dev-8jwmstalyswjk6k6.us.auth0.com/api/v2/}
       CLOUDWATCH_LOG_GROUP: ${CLOUDWATCH_LOG_GROUP:-/ecs/inventory-ai-api}
     depends_on:
       postgres:
@@ -49,11 +49,11 @@ services:
     ports:
       - "8050:8050"
     environment:
-      DATABASE_URL: postgresql://user:password@postgres:5432/inventory_db
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/inventory_db
       API_PORT: 8000
-      AUTH0_DOMAIN: ${AUTH0_DOMAIN:-your-tenant.auth0.com}
-      AUTH0_CLIENT_ID: ${AUTH0_CLIENT_ID:-YOUR_AUTH0_CLIENT_ID}
-      AUTH0_API_AUDIENCE: ${AUTH0_API_AUDIENCE:-https://inventory-ai-api}
+      AUTH0_DOMAIN: ${AUTH0_DOMAIN:-dev-8jwmstalyswjk6k6.auth0.com}
+      AUTH0_CLIENT_ID: ${AUTH0_CLIENT_ID:-pzavIBiATNt20mTgnqRSlAxQDh88uPgl}
+      AUTH0_API_AUDIENCE: ${AUTH0_API_AUDIENCE:-https://dev-8jwmstalyswjk6k6.us.auth0.com/api/v2/}
     depends_on:
       - api
     restart: unless-stopped

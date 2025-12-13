@@ -29,7 +29,7 @@ API_URL = f"http://localhost:{settings.api_port}"
 
 # Auth0 Configuration
 AUTH0_DOMAIN = settings.auth0_domain
-AUTH0_CLIENT_ID = getattr(settings, 'auth0_client_id', 'YOUR_CLIENT_ID')
+AUTH0_CLIENT_ID = getattr(settings, 'auth0_client_id', 'pzavIBiATNt20mTgnqRSlAxQDh88uPgl')
 AUTH0_CALLBACK_URL = f"http://localhost:{settings.dashboard_port}/callback"
 AUTH0_AUDIENCE = settings.auth0_api_audience
 
