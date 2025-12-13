@@ -2,6 +2,7 @@
 
 This directory contains the configuration files for deploying inventory.ai to AWS ECS.
 
+
 ## Files
 
 - `ecs-task-definition-api.json` - ECS task definition for the FastAPI service
