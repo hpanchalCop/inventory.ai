@@ -5,6 +5,9 @@ python-multipart==0.0.18
 pydantic==2.5.0
 pydantic-settings==2.1.0
 
+# Authentication
+PyJWT[crypto]==2.8.0
+
 # Database
 psycopg2-binary==2.9.9
 sqlalchemy==2.0.23

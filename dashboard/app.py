@@ -1,16 +1,18 @@
 """Plotly Dash Admin Dashboard for inventory.ai."""
 import dash
-from dash import dcc, html, dash_table, Input, Output, State
+from dash import dcc, html, dash_table, Input, Output, State, callback_context
 import dash_bootstrap_components as dbc
 import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
 import requests
 from datetime import datetime
-from typing import List, Dict
+from typing import List, Dict, Optional
 import io
 import base64
 from PIL import Image
+import json
+from urllib.parse import urlencode
 
 from shared.config import settings
 
@@ -18,11 +20,39 @@ from shared.config import settings
 app = dash.Dash(
     __name__,
     external_stylesheets=[dbc.themes.BOOTSTRAP],
-    title="Inventory.AI Dashboard"
+    title="Inventory.AI Dashboard",
+    suppress_callback_exceptions=True
 )
 
 # API base URL
 API_URL = f"http://localhost:{settings.api_port}"
+
+# Auth0 Configuration
+AUTH0_DOMAIN = settings.auth0_domain
+AUTH0_CLIENT_ID = getattr(settings, 'auth0_client_id', 'YOUR_CLIENT_ID')
+AUTH0_CALLBACK_URL = f"http://localhost:{settings.dashboard_port}/callback"
+AUTH0_AUDIENCE = settings.auth0_api_audience
+
+
+def get_auth0_login_url() -> str:
+    """Generate Auth0 login URL."""
+    params = {
+        'response_type': 'token',
+        'client_id': AUTH0_CLIENT_ID,
+        'redirect_uri': AUTH0_CALLBACK_URL,
+        'scope': 'openid profile email',
+        'audience': AUTH0_AUDIENCE
+    }
+    return f"https://{AUTH0_DOMAIN}/authorize?{urlencode(params)}"
+
+
+def get_auth0_logout_url() -> str:
+    """Generate Auth0 logout URL."""
+    params = {
+        'client_id': AUTH0_CLIENT_ID,
+        'returnTo': f"http://localhost:{settings.dashboard_port}"
+    }
+    return f"https://{AUTH0_DOMAIN}/v2/logout?{urlencode(params)}"
 
 
 def fetch_products() -> List[Dict]:
@@ -35,6 +65,30 @@ def fetch_products() -> List[Dict]:
     except Exception as e:
         print(f"Error fetching products: {e}")
         return []
+
+
+def fetch_api_stats() -> Dict:
+    """Fetch API usage statistics."""
+    try:
+        response = requests.get(f"{API_URL}/admin/stats")
+        if response.status_code == 200:
+            return response.json()
+        return {}
+    except Exception as e:
+        print(f"Error fetching stats: {e}")
+        return {}
+
+
+def create_product_with_auth(data: Dict, token: str) -> requests.Response:
+    """Create product with authentication."""
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    return requests.post(f"{API_URL}/products/text-only", json=data, headers=headers)
+
+
+def delete_product_with_auth(product_id: int, token: str) -> requests.Response:
+    """Delete product with authentication."""
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    return requests.delete(f"{API_URL}/products/{product_id}", headers=headers)
 
 
 def create_product_table(products: List[Dict]) -> dash_table.DataTable:
@@ -127,12 +181,25 @@ def create_price_chart(products: List[Dict]) -> dcc.Graph:
 
 # Layout
 app.layout = dbc.Container([
+    # URL Location for handling Auth0 callback
+    dcc.Location(id='url', refresh=False),
+    
+    # Store for authentication token
+    dcc.Store(id='auth-token-store', storage_type='session'),
+    
+    # Header with Auth
     dbc.Row([
         dbc.Col([
             html.H1("Inventory.AI Admin Dashboard", className="text-center my-4"),
-            html.Hr()
-        ])
+        ], width=8),
+        dbc.Col([
+            html.Div(id='auth-status', className="text-end my-4")
+        ], width=4),
     ]),
+    html.Hr(),
+    
+    # Auth Alert
+    html.Div(id='auth-alert'),
     
     # Statistics Row
     dbc.Row([
@@ -232,6 +299,21 @@ app.layout = dbc.Container([
                 ])
             ])
         ])
+    ], className="mb-4"),
+    
+    # API Usage Statistics Section
+    dbc.Row([
+        dbc.Col([
+            dbc.Card([
+                dbc.CardHeader([
+                    html.H4("API Usage Statistics", className="d-inline"),
+                    dbc.Button("Refresh Stats", id="btn-refresh-stats", color="info", size="sm", className="float-end")
+                ]),
+                dbc.CardBody([
+                    html.Div(id="api-stats-container")
+                ])
+            ])
+        ])
     ]),
     
     # Interval component for auto-refresh
@@ -248,6 +330,59 @@ app.layout = dbc.Container([
 
 
 # Callbacks
+
+# Auth0 callback handler - extracts token from URL hash
+app.clientside_callback(
+    """
+    function(href) {
+        if (href && href.includes('access_token=')) {
+            const hashParams = new URLSearchParams(href.split('#')[1]);
+            const token = hashParams.get('access_token');
+            if (token) {
+                // Clear the URL hash
+                window.history.replaceState({}, document.title, window.location.pathname);
+                return token;
+            }
+        }
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output('auth-token-store', 'data'),
+    Input('url', 'href')
+)
+
+
+@app.callback(
+    Output('auth-status', 'children'),
+    Input('auth-token-store', 'data')
+)
+def update_auth_status(token):
+    """Update authentication status display."""
+    if token:
+        return html.Div([
+            dbc.Badge("Authenticated", color="success", className="me-2"),
+            dbc.Button("Logout", id="btn-logout", color="outline-danger", size="sm", href=get_auth0_logout_url())
+        ])
+    else:
+        return dbc.Button("Login with Auth0", id="btn-login", color="primary", size="sm", href=get_auth0_login_url())
+
+
+@app.callback(
+    Output('auth-alert', 'children'),
+    Input('auth-token-store', 'data')
+)
+def show_auth_alert(token):
+    """Show alert about authentication status."""
+    if not token:
+        return dbc.Alert([
+            html.I(className="bi bi-info-circle me-2"),
+            "You are not logged in. ",
+            html.A("Login", href=get_auth0_login_url(), className="alert-link"),
+            " to add or delete products."
+        ], color="info", dismissable=True, className="mb-3")
+    return None
+
+
 @app.callback(
     Output('product-data-store', 'data'),
     [Input('btn-refresh', 'n_clicks'),
@@ -314,11 +449,19 @@ def update_dashboard(products):
     [State('input-name', 'value'),
      State('input-description', 'value'),
      State('input-category', 'value'),
-     State('input-price', 'value')],
+     State('input-price', 'value'),
+     State('auth-token-store', 'data')],
     prevent_initial_call=True
 )
-def add_product(n_clicks, name, description, category, price):
-    """Add new product via API."""
+def add_product(n_clicks, name, description, category, price, token):
+    """Add new product via API (requires authentication)."""
+    if not token:
+        return dbc.Alert([
+            "Authentication required. Please ",
+            html.A("login", href=get_auth0_login_url()),
+            " to add products."
+        ], color="warning")
+    
     if not name or not description:
         return dbc.Alert("Name and description are required", color="danger")
     
@@ -330,14 +473,108 @@ def add_product(n_clicks, name, description, category, price):
             "price": float(price) if price else None
         }
         
-        response = requests.post(f"{API_URL}/products/text-only", json=data)
+        response = create_product_with_auth(data, token)
         
         if response.status_code == 200:
             return dbc.Alert("Product added successfully!", color="success")
+        elif response.status_code == 401:
+            return dbc.Alert("Authentication expired. Please login again.", color="warning")
         else:
             return dbc.Alert(f"Error: {response.text}", color="danger")
     except Exception as e:
         return dbc.Alert(f"Error: {str(e)}", color="danger")
+
+
+@app.callback(
+    Output('api-stats-container', 'children'),
+    [Input('btn-refresh-stats', 'n_clicks'),
+     Input('interval-component', 'n_intervals')],
+    prevent_initial_call=False
+)
+def update_api_stats(n_clicks, n_intervals):
+    """Update API usage statistics display."""
+    stats = fetch_api_stats()
+    
+    if not stats:
+        return dbc.Alert("Could not fetch API statistics. Make sure the API is running.", color="warning")
+    
+    # Check if we have placeholder data
+    if stats.get('note'):
+        return dbc.Alert(stats['note'], color="info")
+    
+    total_requests = stats.get('total_requests', {})
+    requests_by_endpoint = stats.get('requests_by_endpoint', {})
+    requests_by_method = stats.get('requests_by_method', {})
+    response_times = stats.get('response_times', {})
+    errors = stats.get('errors', {})
+    
+    return html.Div([
+        dbc.Row([
+            # Request counts by time period
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardHeader("Requests by Time Period"),
+                    dbc.CardBody([
+                        html.P([html.Strong("Last Hour: "), f"{total_requests.get('last_hour', 0)}"]),
+                        html.P([html.Strong("Last 24 Hours: "), f"{total_requests.get('last_24_hours', 0)}"]),
+                        html.P([html.Strong("Last 7 Days: "), f"{total_requests.get('last_7_days', 0)}"]),
+                    ])
+                ])
+            ], width=4),
+            
+            # Response times
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardHeader("Response Times"),
+                    dbc.CardBody([
+                        html.P([html.Strong("Average: "), f"{response_times.get('average_ms', 0):.2f} ms"]),
+                        html.P([html.Strong("Max: "), f"{response_times.get('max_ms', 0):.2f} ms"]),
+                    ])
+                ])
+            ], width=4),
+            
+            # Error rates
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardHeader("Errors (24h)"),
+                    dbc.CardBody([
+                        html.P([html.Strong("Error Count: "), f"{errors.get('count_24h', 0)}"]),
+                        html.P([html.Strong("Error Rate: "), f"{errors.get('error_rate_percent', 0):.2f}%"]),
+                    ])
+                ])
+            ], width=4),
+        ], className="mb-3"),
+        
+        dbc.Row([
+            # Requests by endpoint
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardHeader("Requests by Endpoint"),
+                    dbc.CardBody([
+                        html.Ul([
+                            html.Li(f"{endpoint}: {count}")
+                            for endpoint, count in requests_by_endpoint.items()
+                        ]) if requests_by_endpoint else html.P("No endpoint data available")
+                    ])
+                ])
+            ], width=6),
+            
+            # Requests by HTTP method
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardHeader("Requests by Method"),
+                    dbc.CardBody([
+                        html.Ul([
+                            html.Li(f"{method}: {count}")
+                            for method, count in requests_by_method.items()
+                        ]) if requests_by_method else html.P("No method data available")
+                    ])
+                ])
+            ], width=6),
+        ]),
+        
+        html.Small(f"Generated at: {stats.get('generated_at', 'N/A')}", className="text-muted mt-2")
+    ])
 
 
 if __name__ == '__main__':

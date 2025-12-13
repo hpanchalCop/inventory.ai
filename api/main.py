@@ -13,6 +13,8 @@ from shared.database import init_db, get_db, Product
 from shared.ml_service import embedding_service
 from shared.s3_service import s3_service
 from shared.config import settings
+from shared.auth import require_auth, Auth0User, get_current_user
+from shared.cloudwatch_stats import cloudwatch_stats
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -93,6 +95,41 @@ async def health_check():
     return {"status": "healthy"}
 
 
+# =============================================================================
+# ADMIN ENDPOINTS (No Auth Required)
+# =============================================================================
+
+@app.get("/admin/stats")
+async def get_admin_stats():
+    """
+    Get API usage statistics from CloudWatch.
+    
+    Returns comprehensive statistics including:
+    - Total requests by time period
+    - Requests by endpoint
+    - Requests by HTTP method
+    - Response times
+    - Error rates
+    """
+    stats = cloudwatch_stats.get_full_stats()
+    return stats
+
+
+@app.get("/admin/stats/summary")
+async def get_stats_summary():
+    """Get a quick summary of API usage."""
+    stats = cloudwatch_stats.get_request_stats_from_logs(hours=24)
+    return {
+        "period": "last_24_hours",
+        "total_requests": stats.get('total_requests', 0),
+        "top_endpoints": dict(list(stats.get('by_endpoint', {}).items())[:5])
+    }
+
+
+# =============================================================================
+# PROTECTED ENDPOINTS (Auth0 Required for POST/DELETE)
+# =============================================================================
+
 @app.post("/products/multipart", response_model=ProductResponse)
 async def create_product_multipart(
     name: str = Form(...),
@@ -100,7 +137,8 @@ async def create_product_multipart(
     category: Optional[str] = Form(None),
     price: Optional[float] = Form(None),
     image: Optional[UploadFile] = File(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: Auth0User = Depends(get_current_user)
 ):
     """
     Create product with multipart request (image + text).
@@ -168,7 +206,8 @@ async def create_product_multipart(
 @app.post("/products/text-only", response_model=ProductResponse)
 async def create_product_text_only(
     product: ProductCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: Auth0User = Depends(get_current_user)
 ):
     """
     Create product with text-only description.
@@ -234,7 +273,8 @@ async def get_product(product_id: int, db: Session = Depends(get_db)):
 @app.post("/search/similar", response_model=List[SimilaritySearchResponse])
 async def search_similar_products(
     request: SimilaritySearchRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: Auth0User = Depends(get_current_user)
 ):
     """
     Search for similar products using embeddings.
@@ -296,7 +336,11 @@ async def search_similar_products(
 
 
 @app.delete("/products/{product_id}")
-async def delete_product(product_id: int, db: Session = Depends(get_db)):
+async def delete_product(
+    product_id: int, 
+    db: Session = Depends(get_db),
+    current_user: Auth0User = Depends(get_current_user)
+):
     """Delete a product."""
     product = db.query(Product).filter(Product.id == product_id).first()
     

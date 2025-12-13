@@ -27,6 +27,15 @@ class Settings(BaseSettings):
     embedding_model: str = "sentence-transformers/clip-ViT-B-32"
     text_embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     
+    # Auth0
+    auth0_domain: str = "your-tenant.auth0.com"
+    auth0_api_audience: str = "https://inventory-ai-api"
+    auth0_algorithms: str = "RS256"
+    auth0_client_id: str = "YOUR_AUTH0_CLIENT_ID"
+    
+    # CloudWatch
+    cloudwatch_log_group: str = "/ecs/inventory-ai-api"
+    
     class Config:
         env_file = ".env"
         case_sensitive = False
