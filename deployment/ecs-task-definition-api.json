@@ -31,7 +31,7 @@
         },
         {
           "name": "AUTH0_DOMAIN",
-          "value": "dev-8jwmstalyswjk6k6.auth0.com"
+          "value": "dev-8jwmstalyswjk6k6.us.auth0.com"
         },
         {
           "name": "AUTH0_API_AUDIENCE",

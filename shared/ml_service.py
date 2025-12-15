@@ -3,20 +3,6 @@ from typing import Optional, List
 import numpy as np
 from PIL import Image
 
-# Ensure compatibility between sentence-transformers and huggingface_hub
-# Some versions of sentence-transformers import `cached_download` from
-# `huggingface_hub`. Newer `huggingface_hub` exposes `hf_hub_download` instead.
-# Provide a small runtime shim so older imports still work.
-try:
-    import huggingface_hub as _hf_hub
-    if not hasattr(_hf_hub, "cached_download") and hasattr(_hf_hub, "hf_hub_download"):
-        _hf_hub.cached_download = _hf_hub.hf_hub_download
-except Exception:
-    # If huggingface_hub isn't installed yet, the subsequent import of
-    # SentenceTransformer will surface a clear error. We silently ignore
-    # here to avoid masking that error.
-    pass
-
 from sentence_transformers import SentenceTransformer
 
 from shared.config import settings

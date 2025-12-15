@@ -36,7 +36,20 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 def init_db():
-    """Initialize database tables."""
+    """Initialize database tables and pgvector extension."""
+    from sqlalchemy import text
+    
+    # Create pgvector extension first
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+            conn.commit()
+            print("✓ pgvector extension created/verified")
+    except Exception as e:
+        print(f"⚠ Warning: Could not create pgvector extension: {e}")
+        print("  Extension might already exist or you may need superuser privileges")
+    
+    # Create tables
     Base.metadata.create_all(bind=engine)
 
 
