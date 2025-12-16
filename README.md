@@ -1,31 +1,47 @@
 # inventory.ai
 
-AI-powered inventory management system with multimodal embeddings for intelligent product matching and search.
+**AI-powered inventory management system** with multimodal embeddings, semantic search, and enterprise-grade security. Deployed on AWS ECS Fargate with Auth0 authentication.
+
+🔗 **Live API**: http://inventory-ai-alb-755465244.us-east-1.elb.amazonaws.com
 
 ## Features
 
-### FastAPI Microservice
+### 🔐 Security & Authentication
+- **Auth0 Integration**: Enterprise-grade authentication with JWT tokens
+- **Role-Based Access**: Protected admin endpoints for sensitive operations
+- **Secure Secrets**: AWS Secrets Manager integration
+- **Environment-Based Config**: No hardcoded credentials
+
+### 🚀 FastAPI Microservice
 - **Multipart Requests**: Support for image + text product uploads
 - **Text-Only Support**: Create products with descriptions only
 - **Multimodal Embeddings**: Combined image + text embeddings using CLIP for enhanced product matching
-- **Text-Only Semantic Similarity**: Fallback to text-only embeddings for products without images
+- **Advanced Search**: Text-based semantic search, image similarity search, and multimodal search
 - **RESTful API**: Complete CRUD operations for product management
-- **Similarity Search**: Find similar products based on embeddings
+- **Health Monitoring**: Health check endpoints with database connectivity verification
+- **Admin Stats**: Real-time API usage statistics and CloudWatch metrics
 
-### Storage System
+### 💾 Storage & Database
 - **AWS S3**: Scalable storage for product images and ML metadata
-- **PostgreSQL + pgvector**: Store product metadata and vector embeddings for efficient similarity search
+- **PostgreSQL + pgvector**: Vector embeddings for efficient similarity search
+- **Amazon RDS**: Managed PostgreSQL database with encryption
+- **CloudWatch Logs**: Centralized logging and monitoring
 
-### Plotly Dash Admin Dashboard
+### 📊 Plotly Dash Admin Dashboard
 - **Product Management**: Add, view, and manage products through an intuitive web interface
-- **Analytics**: Visualize product distribution by category and price
-- **Real-time Stats**: Monitor total products, categories, and other key metrics
+- **Analytics Dashboard**: Visualize product distribution by category and price
+- **Real-time Stats**: Monitor total products, categories, and API usage
+- **CloudWatch Integration**: View API metrics and logs
+- **Auth0 Login**: Secure authentication for admin access
 - **Auto-refresh**: Dashboard updates automatically every 30 seconds
 
-### Containerized Deployment
-- **Docker Images**: Separate containers for FastAPI service and Dash dashboard
-- **Local Development**: Easy setup with docker-compose
-- **AWS ECS**: Production-ready deployment configuration for AWS Elastic Container Service
+### ☁️ AWS Cloud Infrastructure
+- **ECS Fargate**: Serverless container orchestration
+- **Application Load Balancer**: High availability and traffic distribution
+- **Auto-scaling**: Automatic scaling based on demand
+- **Multi-AZ Deployment**: High availability across availability zones
+- **IAM Roles**: Secure service-to-service authentication
+- **VPC Security Groups**: Network isolation and security
 
 ## Architecture
 
@@ -36,18 +52,51 @@ inventory.ai/
 ├── dashboard/             # Plotly Dash admin interface
 │   └── app.py            # Dashboard application
 ├── shared/                # Shared modules
+│   ├── auth.py           # Auth0 authentication & JWT verification
+│   ├── cloudwatch_stats.py # CloudWatch metrics integration
 │   ├── config.py         # Configuration management
 │   ├── database.py       # Database models and setup
-│   ├── ml_service.py     # ML embeddings service
+│   ├── ml_service.py     # ML embeddings service (CLIP + MiniLM)
 │   └── s3_service.py     # AWS S3 integration
-├── deployment/            # Deployment configurations
-│   ├── ecs-task-definition-api.json
-│   ├── ecs-task-definition-dashboard.json
-│   └── deploy-ecs.sh
+├── deployment/            # AWS deployment configurations
+│   ├── config.json       # Deployment configuration (gitignored)
+│   ├── config.example.json # Config template
+│   ├── deploy-modular.ps1 # Modular deployment script
+│   ├── task-definition-api.json
+│   ├── task-definition-dashboard.json
+│   └── deployment-info.json # Deployment state
+├── tests/                 # Test suite
+│   ├── test_api.py       # API integration tests
+│   └── test_ml_service.py # ML service unit tests
 ├── Dockerfile.api         # API container definition
 ├── Dockerfile.dashboard   # Dashboard container definition
 ├── docker-compose.yml     # Local development setup
-└── requirements.txt       # Python dependencies
+├── requirements.txt       # API dependencies
+└── requirements-dashboard.txt # Dashboard dependencies
+```
+
+### AWS Infrastructure
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                  Application Load Balancer              │
+│  inventory-ai-alb-755465244.us-east-1.elb.amazonaws.com │
+└────────────────┬────────────────────────────────────────┘
+                 │
+        ┌────────┴────────┐
+        │                 │
+   ┌────▼────┐      ┌────▼────┐
+   │  API    │      │Dashboard│
+   │ Service │      │ Service │
+   │ (ECS)   │      │  (ECS)  │
+   └────┬────┘      └────┬────┘
+        │                │
+        ├────────┬───────┤
+        │        │       │
+   ┌────▼────┐ ┌▼──┐ ┌──▼─────┐
+   │   RDS   │ │S3 │ │Auth0   │
+   │Postgres │ │   │ │        │
+   └─────────┘ └───┘ └────────┘
 ```
 
 ## Prerequisites
@@ -116,10 +165,10 @@ python dashboard/app.py
 
 ### Products
 
-- `POST /products/multipart` - Create product with image and text
+- `POST /products/multipart` - Create product with image and text (requires Auth0 token)
   - Form fields: `name`, `description`, `category`, `price`, `image` (file)
   
-- `POST /products/text-only` - Create product with text only
+- `POST /products/text-only` - Create product with text only (requires Auth0 token)
   - JSON body: `{"name": "...", "description": "...", "category": "...", "price": 0.0}`
 
 - `GET /products` - List all products
@@ -127,22 +176,54 @@ python dashboard/app.py
 
 - `GET /products/{product_id}` - Get specific product
 
-- `DELETE /products/{product_id}` - Delete product
+- `DELETE /products/{product_id}` - Delete product (requires Auth0 token)
 
 ### Search
 
-- `POST /search/similar` - Find similar products
-  - JSON body: `{"product_id": 1, "top_k": 5, "use_multimodal": true}`
+- `POST /search/text` - Text-based semantic search
+  - JSON body: `{"query": "search term", "top_k": 5}`
+  - Returns products ranked by text similarity
 
-### Health
+- `POST /search/image` - Image-based similarity search
+  - Form data: `image` (file), `top_k` (optional)
+  - Returns visually similar products
 
-- `GET /health` - Health check endpoint
+- `POST /search/multimodal` - Combined text+image search
+  - JSON body: `{"product_id": 1, "top_k": 5}`
+  - Uses both text and image embeddings
+
+### Admin & Monitoring
+
+- `GET /admin/stats` - API usage statistics (requires Auth0 token with admin role)
+  - Returns request counts, CloudWatch metrics, and system stats
+
+- `GET /admin/stats/summary` - Summary statistics
+  - Product counts, embeddings info, and storage metrics
+
+### Health & Info
+
+- `GET /` - API information and available endpoints
+- `GET /health` - Health check with database connectivity
+- `GET /auth/me` - Current user info (requires Auth0 token)
 
 ## API Usage Examples
 
+### Authentication
+
+Get an Auth0 token first:
+```python
+# Use the included get_token.py script
+import subprocess
+token = subprocess.check_output(['python', 'get_token.py']).decode().strip()
+```
+
 ### Create Product with Image (cURL)
 ```bash
-curl -X POST "http://localhost:8000/products/multipart" \
+# Get Auth0 token
+TOKEN=$(python get_token.py)
+
+curl -X POST "http://inventory-ai-alb-755465244.us-east-1.elb.amazonaws.com/products/multipart" \
+  -H "Authorization: Bearer $TOKEN" \
   -F "name=Wireless Mouse" \
   -F "description=Ergonomic wireless mouse with USB receiver" \
   -F "category=Electronics" \
@@ -153,6 +234,11 @@ curl -X POST "http://localhost:8000/products/multipart" \
 ### Create Product Text-Only (Python)
 ```python
 import requests
+import subprocess
+
+# Get authentication token
+token = subprocess.check_output(['python', 'get_token.py']).decode().strip()
+headers = {"Authorization": f"Bearer {token}"}
 
 product = {
     "name": "Mechanical Keyboard",
@@ -162,26 +248,45 @@ product = {
 }
 
 response = requests.post(
-    "http://localhost:8000/products/text-only",
-    json=product
+    "http://inventory-ai-alb-755465244.us-east-1.elb.amazonaws.com/products/text-only",
+    json=product,
+    headers=headers
 )
 print(response.json())
 ```
 
-### Search Similar Products (Python)
+### Text Search (Python)
 ```python
 import requests
 
 search_request = {
-    "product_id": 1,
-    "top_k": 5,
-    "use_multimodal": True
+    "query": "patient bed adjustable",
+    "top_k": 5
 }
 
 response = requests.post(
-    "http://localhost:8000/search/similar",
+    "http://inventory-ai-alb-755465244.us-east-1.elb.amazonaws.com/search/text",
     json=search_request
 )
+
+for result in response.json():
+    product = result['product']
+    score = result['similarity_score']
+    print(f"{product['name']}: {score:.3f}")
+```
+
+### Image Search (Python)
+```python
+import requests
+
+with open('product_image.jpg', 'rb') as f:
+    files = {'image': f}
+    data = {'top_k': 5}
+    response = requests.post(
+        "http://inventory-ai-alb-755465244.us-east-1.elb.amazonaws.com/search/image",
+        files=files,
+        data=data
+    )
 
 for result in response.json():
     print(f"{result['product']['name']}: {result['similarity_score']:.2f}")
@@ -189,33 +294,74 @@ for result in response.json():
 
 ## AWS ECS Deployment
 
+### Current Production Infrastructure
+
+- **Load Balancer**: `inventory-ai-alb-755465244.us-east-1.elb.amazonaws.com`
+- **RDS Endpoint**: `inventory-ai-db.cwjko2wgq241.us-east-1.rds.amazonaws.com`
+- **Region**: `us-east-1`
+- **Cluster**: `inventory-ai-cluster`
+- **Services**: API (2 tasks) + Dashboard (1 task)
+
 ### Prerequisites
-- AWS CLI configured
-- ECR repositories created
-- ECS cluster set up
-- RDS PostgreSQL instance with pgvector
-- S3 bucket created
+- AWS CLI configured with appropriate credentials
+- PowerShell 7+ (for Windows deployment)
+- Docker installed and running
+- Auth0 account with configured application
+- AWS Account with:
+  - VPC with public subnets
+  - ECR repositories
+  - IAM permissions for ECS, RDS, S3, Secrets Manager
 
-### Deploy to ECS
+### Automated Deployment
 
-1. **Configure deployment**:
-Edit `deployment/ecs-task-definition-api.json` and `deployment/ecs-task-definition-dashboard.json` with your:
-- AWS Account ID
-- ECR registry URL
-- RDS endpoint
-- IAM role ARNs
+Use the PowerShell deployment script for complete infrastructure setup:
 
-2. **Set environment variables**:
-```bash
-export ECR_REGISTRY=YOUR_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com
-export CLUSTER_NAME=inventory-ai-cluster
-export API_SERVICE_NAME=inventory-ai-api-service
-export DASHBOARD_SERVICE_NAME=inventory-ai-dashboard-service
+```powershell
+# Set up your credentials in environment variables
+$env:AWS_ACCESS_KEY_ID = "your-access-key"
+$env:AWS_SECRET_ACCESS_KEY = "your-secret-key"
+$env:AUTH0_DOMAIN = "your-domain.auth0.com"
+$env:AUTH0_CLIENT_ID = "your-client-id"
+$env:AUTH0_CLIENT_SECRET = "your-client-secret"
+$env:AUTH0_API_AUDIENCE = "your-api-audience"
+$env:S3_BUCKET_NAME = "your-s3-bucket"
+$env:DB_MASTER_PASSWORD = "YourSecurePassword123!"
+
+# Run deployment
+.\deployment\deploy-to-aws.ps1 -Region us-east-1 -AccountId YOUR_ACCOUNT_ID -VpcId YOUR_VPC_ID
 ```
 
-3. **Run deployment script**:
+The script will:
+1. Create ECR repositories
+2. Build and push Docker images
+3. Create RDS PostgreSQL instance with pgvector
+4. Set up Application Load Balancer
+5. Create ECS cluster and services
+6. Configure security groups and IAM roles
+7. Store secrets in AWS Secrets Manager
+8. Set up CloudWatch logging
+
+### Manual Configuration
+
+1. **Copy and configure deployment settings**:
 ```bash
-./deployment/deploy-ecs.sh
+cp deployment/config.example.json deployment/config.json
+# Edit config.json with your AWS account details and credentials
+```
+
+2. **Build Docker images locally** (optional):
+```bash
+docker-compose build
+```
+
+3. **Push images to ECR**:
+```powershell
+# Login to ECR
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin YOUR_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com
+
+# Tag and push
+docker tag inventory-ai-api:latest YOUR_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/inventory-ai-api:latest
+docker push YOUR_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/inventory-ai-api:latest
 ```
 
 ## ML Models
@@ -258,19 +404,36 @@ CREATE INDEX ON products USING ivfflat (text_embedding vector_cosine_ops);
 
 ## Configuration
 
-All configuration is managed through environment variables. See `.env.example` for available options:
+### Environment Variables
 
-- `DATABASE_URL`: PostgreSQL connection string
-- `AWS_ACCESS_KEY_ID`: AWS credentials
+All configuration is managed through environment variables. **Never commit secrets to git.**
+
+**Required for Production:**
+- `DATABASE_URL`: PostgreSQL connection string with pgvector
+- `AWS_ACCESS_KEY_ID`: AWS credentials (use IAM roles in production)
 - `AWS_SECRET_ACCESS_KEY`: AWS credentials
 - `AWS_REGION`: AWS region (default: us-east-1)
 - `S3_BUCKET_NAME`: S3 bucket for images
+- `AUTH0_DOMAIN`: Your Auth0 tenant domain
+- `AUTH0_API_AUDIENCE`: Auth0 API identifier
+- `AUTH0_ALGORITHMS`: JWT algorithm (default: RS256)
+
+**Optional:**
 - `API_HOST`: API host (default: 0.0.0.0)
 - `API_PORT`: API port (default: 8000)
 - `DASHBOARD_HOST`: Dashboard host (default: 0.0.0.0)
 - `DASHBOARD_PORT`: Dashboard port (default: 8050)
-- `EMBEDDING_MODEL`: Multimodal model name
-- `TEXT_EMBEDDING_MODEL`: Text-only model name
+- `EMBEDDING_MODEL`: Multimodal model (default: openai/clip-vit-base-patch32)
+- `TEXT_EMBEDDING_MODEL`: Text model (default: sentence-transformers/all-MiniLM-L6-v2)
+- `LOG_LEVEL`: Logging level (default: INFO)
+
+### Security Best Practices
+
+1. **Use AWS Secrets Manager** in production (automatic with deployment script)
+2. **Never hardcode credentials** - use environment variables
+3. **Rotate credentials regularly** - especially after any exposure
+4. **Use IAM roles** for ECS tasks instead of access keys when possible
+5. **Keep `deployment/config.json` out of git** - it's in `.gitignore`
 
 ## Development
 
@@ -332,9 +495,21 @@ For issues and questions:
 
 ## Tech Stack
 
-- **Backend**: FastAPI, Python 3.10+
-- **Frontend**: Plotly Dash, Bootstrap
-- **Database**: PostgreSQL with pgvector
-- **ML**: Sentence Transformers, CLIP, PyTorch
-- **Cloud**: AWS S3, AWS ECS
+- **Backend**: FastAPI 0.104+, Python 3.10+
+- **Frontend**: Plotly Dash, Dash Bootstrap Components
+- **Authentication**: Auth0, PyJWT
+- **Database**: PostgreSQL 15.8 with pgvector extension
+- **ML Models**: 
+  - OpenAI CLIP ViT-B/32 (multimodal embeddings)
+  - Sentence Transformers all-MiniLM-L6-v2 (text embeddings)
+  - PyTorch backend
+- **Cloud Infrastructure**:
+  - AWS ECS Fargate (container orchestration)
+  - AWS RDS (managed PostgreSQL)
+  - AWS S3 (object storage)
+  - AWS Application Load Balancer
+  - AWS CloudWatch (logging & monitoring)
+  - AWS Secrets Manager (credential management)
+  - AWS ECR (container registry)
 - **Containerization**: Docker, Docker Compose
+- **DevOps**: PowerShell deployment automation, GitHub
