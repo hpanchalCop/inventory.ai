@@ -63,10 +63,11 @@ class CloudWatchStatsService:
             start_time = end_time - timedelta(hours=hours)
             
             # Query for request counts by endpoint
+            # Matches uvicorn log format: INFO: IP:PORT - "METHOD /endpoint HTTP/1.1" STATUS
             query = """
             fields @timestamp, @message
-            | filter @message like /\"(GET|POST|DELETE|PUT|PATCH)/
-            | parse @message /\"(?<method>GET|POST|DELETE|PUT|PATCH) (?<endpoint>[^ ]+)/
+            | filter @message like /"(GET|POST|DELETE|PUT|PATCH)/
+            | parse @message /"(?<method>GET|POST|DELETE|PUT|PATCH) (?<endpoint>[^ ]+) HTTP/
             | stats count(*) as request_count by endpoint, method
             | sort request_count desc
             """
@@ -151,47 +152,24 @@ class CloudWatchStatsService:
             print(f"Error querying CloudWatch for errors: {e}")
             return {"error_count": 0}
     
-    def get_response_time_metrics(self, hours: int = 24) -> Dict[str, float]:
+    def get_response_time_metrics(self, hours: int = 24) -> Dict[str, Any]:
         """
-        Get response time metrics from CloudWatch.
+        Get response time metrics from CloudWatch Logs.
+        
+        Note: Uvicorn's default logging doesn't include response times.
+        To track response times, custom middleware would need to be added.
         
         Args:
             hours: Number of hours to look back
             
         Returns:
-            Dictionary with response time statistics
+            Dictionary with response time statistics (currently N/A)
         """
-        if not self.cloudwatch_client:
-            return {"average_ms": 0.0, "p95_ms": 0.0, "p99_ms": 0.0}
-        
-        try:
-            end_time = datetime.utcnow()
-            start_time = end_time - timedelta(hours=hours)
-            
-            # Query CloudWatch metrics for response times
-            # Note: This requires custom metrics to be published
-            response = self.cloudwatch_client.get_metric_statistics(
-                Namespace='InventoryAI/API',
-                MetricName='ResponseTime',
-                StartTime=start_time,
-                EndTime=end_time,
-                Period=3600,  # 1 hour
-                Statistics=['Average', 'Maximum']
-            )
-            
-            if response['Datapoints']:
-                avg = sum(dp['Average'] for dp in response['Datapoints']) / len(response['Datapoints'])
-                max_time = max(dp['Maximum'] for dp in response['Datapoints'])
-                return {
-                    "average_ms": round(avg, 2),
-                    "max_ms": round(max_time, 2)
-                }
-            
-            return {"average_ms": 0.0, "max_ms": 0.0}
-            
-        except Exception as e:
-            print(f"Error getting response time metrics: {e}")
-            return {"average_ms": 0.0, "max_ms": 0.0}
+        return {
+            "average_ms": "N/A",
+            "max_ms": "N/A",
+            "note": "Enable response time logging middleware to track metrics"
+        }
     
     def get_full_stats(self) -> Dict[str, Any]:
         """
@@ -219,6 +197,18 @@ class CloudWatchStatsService:
                 "last_24_hours": stats_24h.get('total_requests', 0),
                 "last_7_days": stats_7d.get('total_requests', 0)
             },
+            "legitimate_requests": {
+                "count": stats_24h.get('legitimate_count', 0),
+                "by_endpoint": stats_24h.get('legitimate_endpoints', {})
+            },
+            "attack_attempts": {
+                "count": stats_24h.get('attack_count', 0),
+                "by_endpoint": dict(sorted(
+                    stats_24h.get('attack_endpoints', {}).items(), 
+                    key=lambda x: x[1], 
+                    reverse=True
+                )[:50])  # Limit to top 50 attack endpoints
+            },
             "requests_by_endpoint": stats_24h.get('by_endpoint', {}),
             "requests_by_method": stats_24h.get('by_method', {}),
             "response_times": response_times,
@@ -229,10 +219,27 @@ class CloudWatchStatsService:
         }
     
     def _parse_logs_insights_results(self, results: List) -> Dict[str, Any]:
-        """Parse CloudWatch Logs Insights query results."""
+        """Parse CloudWatch Logs Insights query results and categorize endpoints."""
         by_endpoint = defaultdict(int)
         by_method = defaultdict(int)
+        legitimate_endpoints = defaultdict(int)
+        attack_endpoints = defaultdict(int)
         total = 0
+        
+        # Define legitimate endpoint patterns
+        legitimate_patterns = [
+            '/health', '/products', '/search', '/docs', '/openapi.json',
+            '/_dash-', '/favicon.ico', '/admin/stats', '/'
+        ]
+        
+        # Define attack patterns
+        attack_patterns = [
+            '.php', '.env', 'phpinfo', 'phpunit', 'eval-stdin',
+            'config.php', '.git', '.aws', 'sftp', 'password.php',
+            'vendor/', 'laravel/', 'wordpress/', 'wp-config',
+            'XDEBUG', 'phpstorm', '_ignition', 'ReportServer',
+            'boaform', 'setup.cgi', 'think\\app', 'cgi-bin'
+        ]
         
         for row in results:
             endpoint = None
@@ -249,6 +256,19 @@ class CloudWatchStatsService:
             
             if endpoint:
                 by_endpoint[endpoint] += count
+                
+                # Categorize endpoint
+                is_attack = any(pattern in endpoint.lower() for pattern in attack_patterns)
+                is_legitimate = any(endpoint.startswith(pattern) for pattern in legitimate_patterns)
+                
+                if is_attack:
+                    attack_endpoints[endpoint] += count
+                elif is_legitimate or endpoint in ['/', '/']:
+                    legitimate_endpoints[endpoint] += count
+                else:
+                    # Unknown endpoints, treat as suspicious
+                    attack_endpoints[endpoint] += count
+                    
             if method:
                 by_method[method] += count
             total += count
@@ -256,7 +276,11 @@ class CloudWatchStatsService:
         return {
             'total_requests': total,
             'by_endpoint': dict(by_endpoint),
-            'by_method': dict(by_method)
+            'by_method': dict(by_method),
+            'legitimate_endpoints': dict(legitimate_endpoints),
+            'attack_endpoints': dict(attack_endpoints),
+            'attack_count': sum(attack_endpoints.values()),
+            'legitimate_count': sum(legitimate_endpoints.values())
         }
     
     def _get_mock_stats(self) -> Dict[str, Any]:

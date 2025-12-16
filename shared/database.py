@@ -4,6 +4,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
 from pgvector.sqlalchemy import Vector
+from fastapi import HTTPException
 
 from shared.config import settings
 
@@ -30,14 +31,31 @@ class Product(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
-# Database setup
-engine = create_engine(settings.database_url)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# Database setup with error handling
+try:
+    engine = create_engine(
+        settings.database_url,
+        pool_pre_ping=True,  # Verify connections before using
+        pool_size=5,
+        max_overflow=10,
+        connect_args={'connect_timeout': 10}
+    )
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    print("✓ Database engine created successfully")
+except Exception as e:
+    print(f"⚠ Warning: Database engine creation failed: {e}")
+    print("  API will start but database operations will fail")
+    engine = None
+    SessionLocal = None
 
 
 def init_db():
     """Initialize database tables and pgvector extension."""
     from sqlalchemy import text
+    
+    if engine is None:
+        print("⚠ Skipping database initialization (engine not available)")
+        return
     
     # Create pgvector extension first
     try:
@@ -55,6 +73,9 @@ def init_db():
 
 def get_db():
     """Get database session."""
+    if SessionLocal is None:
+        raise HTTPException(status_code=503, detail="Database not available")
+    
     db = SessionLocal()
     try:
         yield db

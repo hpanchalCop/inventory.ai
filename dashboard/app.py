@@ -21,7 +21,9 @@ app = dash.Dash(
     __name__,
     external_stylesheets=[dbc.themes.BOOTSTRAP],
     title="Inventory.AI Dashboard",
-    suppress_callback_exceptions=True
+    suppress_callback_exceptions=True,
+    ##url_base_pathname='/dashboard/'
+    url_base_pathname='/'
 )
 
 # API base URL
@@ -527,8 +529,15 @@ def update_api_stats(n_clicks, n_intervals):
                 dbc.Card([
                     dbc.CardHeader("Response Times"),
                     dbc.CardBody([
-                        html.P([html.Strong("Average: "), f"{response_times.get('average_ms', 0):.2f} ms"]),
-                        html.P([html.Strong("Max: "), f"{response_times.get('max_ms', 0):.2f} ms"]),
+                        html.P([
+                            html.Strong("Average: "), 
+                            f"{response_times.get('average_ms', 0):.2f} ms" if isinstance(response_times.get('average_ms', 0), (int, float)) else str(response_times.get('average_ms', 'N/A'))
+                        ]),
+                        html.P([
+                            html.Strong("Max: "), 
+                            f"{response_times.get('max_ms', 0):.2f} ms" if isinstance(response_times.get('max_ms', 0), (int, float)) else str(response_times.get('max_ms', 'N/A'))
+                        ]),
+                        html.Small(response_times.get('note', ''), className="text-muted") if 'note' in response_times else None
                     ])
                 ])
             ], width=4),

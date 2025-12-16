@@ -1,11 +1,10 @@
-# Core dependencies
+# Dashboard Requirements (minimal - no ML dependencies)
+# Core API framework (for shared code)
 fastapi==0.109.1
 uvicorn[standard]==0.24.0
 python-multipart==0.0.18
 pydantic==2.5.0
 pydantic-settings==2.1.0
-
-# Authentication
 PyJWT[crypto]==2.8.0
 
 # Database
@@ -15,9 +14,8 @@ pgvector==0.2.4
 
 # AWS
 boto3==1.29.7
-botocore==1.32.7
 
-# Dashboard
+# Dashboard specific
 dash==2.14.2
 plotly==5.18.0
 dash-bootstrap-components==1.5.0
@@ -26,11 +24,5 @@ pandas==2.2.0
 # Utilities
 python-dotenv==1.0.0
 httpx==0.25.2
-
-# ML and embeddings
-sentence-transformers==2.7.0
 pillow==10.3.0
-torch==2.2.0
-torchvision==0.17.0
-transformers==4.40.0
-numpy==1.26.0
+requests==2.32.3

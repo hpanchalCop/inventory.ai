@@ -7,7 +7,8 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-API_URL = "http://localhost:8000"
+# Use AWS ALB URL if provided, otherwise default to localhost
+API_URL = os.getenv("API_URL", "http://localhost:8000")
 AUTH0_DOMAIN = os.getenv("AUTH0_DOMAIN")
 AUTH0_CLIENT_ID = os.getenv("AUTH0_CLIENT_ID")
 AUTH0_CLIENT_SECRET = os.getenv("AUTH0_CLIENT_SECRET")

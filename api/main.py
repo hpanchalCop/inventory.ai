@@ -71,8 +71,14 @@ class SimilaritySearchResponse(BaseModel):
 @app.on_event("startup")
 async def startup_event():
     """Initialize database and models on startup."""
-    init_db()
-    print("Database initialized")
+    print("Starting Inventory.AI API...")
+    try:
+        init_db()
+        print("✓ Database initialized")
+    except Exception as e:
+        print(f"⚠ Database initialization warning: {e}")
+        print("  API will start but database operations may fail")
+    print("✓ API startup complete")
 
 
 @app.get("/")
@@ -91,9 +97,28 @@ async def root():
 
 
 @app.get("/health")
-async def health_check():
-    """Health check endpoint."""
-    return {"status": "healthy"}
+async def health_check(db: Session = Depends(get_db)):
+    """Health check endpoint with database connectivity test."""
+    try:
+        # Test database connection
+        from sqlalchemy import text
+        db.execute(text("SELECT 1"))
+        
+        # Check ML models status
+        ml_status = {
+            "models_loaded": embedding_service._models_loaded,
+            "multimodal_model": embedding_service.multimodal_model is not None,
+            "text_model": embedding_service.text_model is not None
+        }
+        
+        return {
+            "status": "healthy", 
+            "database": "connected",
+            "ml_service": ml_status
+        }
+    except Exception as e:
+        # Return 200 but indicate DB issue
+        return {"status": "degraded", "database": "disconnected", "error": str(e)}
 
 
 # =============================================================================
