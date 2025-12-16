@@ -42,3 +42,6 @@ Thumbs.db
 uploads/
 models/
 *.log
+
+# Deployment configs with secrets
+deployment/config.json

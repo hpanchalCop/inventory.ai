@@ -1,0 +1,52 @@
+{
+  "family": "inventory-ai-api",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "{{ECSTaskCPU}}",
+  "memory": "{{ECSTaskMemory}}",
+  "executionRoleArn": "{{TaskExecutionRoleArn}}",
+  "taskRoleArn": "{{TaskRoleArn}}",
+  "containerDefinitions": [
+    {
+      "name": "inventory-ai-api",
+      "image": "{{ECRImageUri}}",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8000,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        { "name": "API_HOST", "value": "0.0.0.0" },
+        { "name": "API_PORT", "value": "8000" },
+        { "name": "AWS_REGION", "value": "{{Region}}" }
+      ],
+      "secrets": [
+        { "name": "DATABASE_URL", "valueFrom": "{{SecretArn}}:DATABASE_URL::" },
+        { "name": "AUTH0_DOMAIN", "valueFrom": "{{SecretArn}}:AUTH0_DOMAIN::" },
+        { "name": "AUTH0_CLIENT_ID", "valueFrom": "{{SecretArn}}:AUTH0_CLIENT_ID::" },
+        { "name": "AUTH0_CLIENT_SECRET", "valueFrom": "{{SecretArn}}:AUTH0_CLIENT_SECRET::" },
+        { "name": "AUTH0_API_AUDIENCE", "valueFrom": "{{SecretArn}}:AUTH0_API_AUDIENCE::" },
+        { "name": "S3_BUCKET_NAME", "valueFrom": "{{SecretArn}}:S3_BUCKET_NAME::" },
+        { "name": "AWS_ACCESS_KEY_ID", "valueFrom": "{{SecretArn}}:AWS_ACCESS_KEY_ID::" },
+        { "name": "AWS_SECRET_ACCESS_KEY", "valueFrom": "{{SecretArn}}:AWS_SECRET_ACCESS_KEY::" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/inventory-ai-api",
+          "awslogs-region": "{{Region}}",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"],
+        "interval": 30,
+        "timeout": 10,
+        "retries": 5,
+        "startPeriod": 120
+      }
+    }
+  ]
+}

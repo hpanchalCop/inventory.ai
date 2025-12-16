@@ -33,6 +33,16 @@ class Settings(BaseSettings):
     embedding_model: str = "sentence-transformers/clip-ViT-B-32"
     text_embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     
+    # Auth0
+    auth0_domain: str = "dev-8jwmstalyswjk6k6.us.auth0.com"
+    auth0_api_audience: str = "https://dev-8jwmstalyswjk6k6.us.auth0.com/api/v2/"
+    auth0_algorithms: str = "RS256"
+    auth0_client_id: str = "pzavIBiATNt20mTgnqRSlAxQDh88uPgl"
+    auth0_client_secret: str = ""  # Optional, for machine-to-machine flows
+    
+    # CloudWatch
+    cloudwatch_log_group: str = "/ecs/inventory-ai-api"
+    
     class Config:
         env_file = ".env"
         case_sensitive = False

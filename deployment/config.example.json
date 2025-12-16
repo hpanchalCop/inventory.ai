@@ -1,0 +1,64 @@
+{
+  "projectName": "inventory-ai",
+  "region": "us-east-1",
+  "accountId": "YOUR_AWS_ACCOUNT_ID",
+  "vpcId": "YOUR_VPC_ID",
+  
+  "database": {
+    "instanceClass": "db.t3.micro",
+    "allocatedStorage": 20,
+    "engine": "postgres",
+    "engineVersion": "15.8",
+    "masterUsername": "postgres",
+    "masterPassword": "${DB_MASTER_PASSWORD}",
+    "dbName": "inventory_db",
+    "backupRetentionPeriod": 0,
+    "storageEncrypted": true
+  },
+  
+  "ecs": {
+    "api": {
+      "taskCpu": "2048",
+      "taskMemory": "4096",
+      "desiredCount": 2,
+      "containerPort": 8000,
+      "healthCheckPath": "/health",
+      "healthCheck": {
+        "interval": 30,
+        "timeout": 10,
+        "retries": 5,
+        "startPeriod": 120
+      }
+    },
+    "dashboard": {
+      "taskCpu": "1024",
+      "taskMemory": "2048",
+      "desiredCount": 1,
+      "containerPort": 8050,
+      "healthCheckPath": "/",
+      "healthCheck": {
+        "interval": 30,
+        "timeout": 10,
+        "retries": 3,
+        "startPeriod": 90
+      }
+    }
+  },
+  
+  "auth0": {
+    "domain": "YOUR_AUTH0_DOMAIN",
+    "clientId": "YOUR_AUTH0_CLIENT_ID",
+    "clientSecret": "${AUTH0_CLIENT_SECRET}",
+    "apiAudience": "YOUR_AUTH0_API_AUDIENCE"
+  },
+  
+  "aws": {
+    "accessKeyId": "${AWS_ACCESS_KEY_ID}",
+    "secretAccessKey": "${AWS_SECRET_ACCESS_KEY}",
+    "s3BucketName": "YOUR_S3_BUCKET_NAME"
+  },
+  
+  "logging": {
+    "retentionDays": 7
+  }
+}

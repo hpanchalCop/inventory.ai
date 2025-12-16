@@ -13,6 +13,8 @@ from shared.database import init_db, get_db, Product
 from shared.ml_service import embedding_service
 from shared.s3_service import s3_service
 from shared.config import settings
+from shared.auth import require_auth, Auth0User, get_current_user
+from shared.cloudwatch_stats import cloudwatch_stats
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -54,11 +56,10 @@ class ProductResponse(BaseModel):
         from_attributes = True
 
 
-class SimilaritySearchRequest(BaseModel):
-    """Similarity search request schema."""
-    product_id: int
+class TextSearchRequest(BaseModel):
+    """Text-based search request schema."""
+    query: str
     top_k: int = 5
-    use_multimodal: bool = True
 
 
 class SimilaritySearchResponse(BaseModel):
@@ -70,8 +71,14 @@ class SimilaritySearchResponse(BaseModel):
 @app.on_event("startup")
 async def startup_event():
     """Initialize database and models on startup."""
-    init_db()
-    print("Database initialized")
+    print("Starting Inventory.AI API...")
+    try:
+        init_db()
+        print("✓ Database initialized")
+    except Exception as e:
+        print(f"⚠ Database initialization warning: {e}")
+        print("  API will start but database operations may fail")
+    print("✓ API startup complete")
 
 
 @app.get("/")
@@ -82,16 +89,72 @@ async def root():
         "version": "1.0.0",
         "endpoints": {
             "products": "/products",
-            "search": "/search/similar"
+            "search_text": "/search/text",
+            "search_image": "/search/image",
+            "search_multimodal": "/search/multimodal"
         }
     }
 
 
 @app.get("/health")
-async def health_check():
-    """Health check endpoint."""
-    return {"status": "healthy"}
+async def health_check(db: Session = Depends(get_db)):
+    """Health check endpoint with database connectivity test."""
+    try:
+        # Test database connection
+        from sqlalchemy import text
+        db.execute(text("SELECT 1"))
+        
+        # Check ML models status
+        ml_status = {
+            "models_loaded": embedding_service._models_loaded,
+            "multimodal_model": embedding_service.multimodal_model is not None,
+            "text_model": embedding_service.text_model is not None
+        }
+        
+        return {
+            "status": "healthy", 
+            "database": "connected",
+            "ml_service": ml_status
+        }
+    except Exception as e:
+        # Return 200 but indicate DB issue
+        return {"status": "degraded", "database": "disconnected", "error": str(e)}
 
+
+# =============================================================================
+# ADMIN ENDPOINTS (No Auth Required)
+# =============================================================================
+
+@app.get("/admin/stats")
+async def get_admin_stats():
+    """
+    Get API usage statistics from CloudWatch.
+    
+    Returns comprehensive statistics including:
+    - Total requests by time period
+    - Requests by endpoint
+    - Requests by HTTP method
+    - Response times
+    - Error rates
+    """
+    stats = cloudwatch_stats.get_full_stats()
+    return stats
+
+
+@app.get("/admin/stats/summary")
+async def get_stats_summary():
+    """Get a quick summary of API usage."""
+    stats = cloudwatch_stats.get_request_stats_from_logs(hours=24)
+    return {
+        "period": "last_24_hours",
+        "total_requests": stats.get('total_requests', 0),
+        "top_endpoints": dict(list(stats.get('by_endpoint', {}).items())[:5])
+    }
+
+
+# =============================================================================
+# PROTECTED ENDPOINTS (Auth0 Required for POST/DELETE)
+# =============================================================================
 
 @app.post("/products/multipart", response_model=ProductResponse)
 async def create_product_multipart(
@@ -100,7 +163,8 @@ async def create_product_multipart(
     category: Optional[str] = Form(None),
     price: Optional[float] = Form(None),
     image: Optional[UploadFile] = File(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: Auth0User = Depends(get_current_user)
 ):
     """
     Create product with multipart request (image + text).
@@ -168,7 +232,8 @@ async def create_product_multipart(
 @app.post("/products/text-only", response_model=ProductResponse)
 async def create_product_text_only(
     product: ProductCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: Auth0User = Depends(get_current_user)
 ):
     """
     Create product with text-only description.
@@ -231,72 +296,167 @@ async def get_product(product_id: int, db: Session = Depends(get_db)):
     return product
 
 
-@app.post("/search/similar", response_model=List[SimilaritySearchResponse])
-async def search_similar_products(
-    request: SimilaritySearchRequest,
-    db: Session = Depends(get_db)
+@app.post("/search/text", response_model=List[SimilaritySearchResponse])
+async def search_by_text(
+    request: TextSearchRequest,
+    db: Session = Depends(get_db),
+    current_user: Auth0User = Depends(get_current_user)
 ):
     """
-    Search for similar products using embeddings.
+    Search for products using text query.
     
-    Supports:
-    - Multimodal similarity (if available)
-    - Text-only similarity as fallback
+    Example: "bariatric wheelchair with reclining back"
     """
-    # Get the query product
-    query_product = db.query(Product).filter(Product.id == request.product_id).first()
-    
-    if not query_product:
-        raise HTTPException(status_code=404, detail="Product not found")
-    
-    # Determine which embedding to use
-    use_multimodal = request.use_multimodal and query_product.multimodal_embedding is not None
-    
-    if use_multimodal:
-        query_embedding = query_product.multimodal_embedding
-        # Get all products with multimodal embeddings
-        all_products = db.query(Product).filter(
-            Product.id != request.product_id,
-            Product.multimodal_embedding.isnot(None)
-        ).all()
-        product_embeddings = [p.multimodal_embedding for p in all_products]
-    else:
-        # Fallback to text embeddings
-        query_embedding = query_product.text_embedding
-        if query_embedding is None:
-            raise HTTPException(status_code=400, detail="Product has no embeddings")
+    try:
+        # Generate embedding from query text
+        query_embedding = embedding_service.generate_text_embedding(request.query)
         
+        # Get all products with text embeddings
         all_products = db.query(Product).filter(
-            Product.id != request.product_id,
             Product.text_embedding.isnot(None)
         ).all()
-        product_embeddings = [p.text_embedding for p in all_products]
+        
+        if not all_products:
+            return []
+        
+        # Extract embeddings
+        import numpy as np
+        product_embeddings = [np.array(p.text_embedding) for p in all_products]
+        query_embedding = np.array(query_embedding)
+        
+        # Find similar products
+        similar_indices = embedding_service.find_similar_products(
+            query_embedding, product_embeddings, request.top_k
+        )
+        
+        # Build response
+        results = []
+        for idx, similarity in similar_indices:
+            results.append(SimilaritySearchResponse(
+                product=all_products[idx],
+                similarity_score=similarity
+            ))
+        
+        return results
     
-    if not product_embeddings:
-        return []
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
+
+
+@app.post("/search/image", response_model=List[SimilaritySearchResponse])
+async def search_by_image(
+    image: UploadFile = File(...),
+    top_k: int = Form(5),
+    db: Session = Depends(get_db),
+    current_user: Auth0User = Depends(get_current_user)
+):
+    """
+    Search for products by uploading an image.
     
-    # Find similar products
-    import numpy as np
-    query_embedding = np.array(query_embedding)
-    product_embeddings = [np.array(emb) for emb in product_embeddings]
+    Upload a product image to find visually similar items.
+    """
+    try:
+        # Read and process image
+        contents = await image.read()
+        pil_image = Image.open(io.BytesIO(contents))
+        
+        # Generate multimodal embedding from image only
+        query_embedding = embedding_service.generate_multimodal_embedding("", pil_image)
+        
+        # Get all products with multimodal embeddings
+        all_products = db.query(Product).filter(
+            Product.multimodal_embedding.isnot(None)
+        ).all()
+        
+        if not all_products:
+            return []
+        
+        # Extract embeddings
+        import numpy as np
+        product_embeddings = [np.array(p.multimodal_embedding) for p in all_products]
+        query_embedding = np.array(query_embedding)
+        
+        # Find similar products
+        similar_indices = embedding_service.find_similar_products(
+            query_embedding, product_embeddings, top_k
+        )
+        
+        # Build response
+        results = []
+        for idx, similarity in similar_indices:
+            results.append(SimilaritySearchResponse(
+                product=all_products[idx],
+                similarity_score=similarity
+            ))
+        
+        return results
     
-    similar_indices = embedding_service.find_similar_products(
-        query_embedding, product_embeddings, request.top_k
-    )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
+
+
+@app.post("/search/multimodal", response_model=List[SimilaritySearchResponse])
+async def search_multimodal(
+    query: str = Form(...),
+    image: Optional[UploadFile] = File(None),
+    top_k: int = Form(5),
+    db: Session = Depends(get_db),
+    current_user: Auth0User = Depends(get_current_user)
+):
+    """
+    Search for products using both text and image (multimodal).
     
-    # Build response
-    results = []
-    for idx, similarity in similar_indices:
-        results.append(SimilaritySearchResponse(
-            product=all_products[idx],
-            similarity_score=similarity
-        ))
+    Combines text description with optional image for best results.
+    Example: query="hospital bed" + image of a bed
+    """
+    try:
+        # Process image if provided
+        pil_image = None
+        if image:
+            contents = await image.read()
+            pil_image = Image.open(io.BytesIO(contents))
+        
+        # Generate multimodal embedding
+        query_embedding = embedding_service.generate_multimodal_embedding(query, pil_image)
+        
+        # Get all products with multimodal embeddings
+        all_products = db.query(Product).filter(
+            Product.multimodal_embedding.isnot(None)
+        ).all()
+        
+        if not all_products:
+            return []
+        
+        # Extract embeddings
+        import numpy as np
+        product_embeddings = [np.array(p.multimodal_embedding) for p in all_products]
+        query_embedding = np.array(query_embedding)
+        
+        # Find similar products
+        similar_indices = embedding_service.find_similar_products(
+            query_embedding, product_embeddings, top_k
+        )
+        
+        # Build response
+        results = []
+        for idx, similarity in similar_indices:
+            results.append(SimilaritySearchResponse(
+                product=all_products[idx],
+                similarity_score=similarity
+            ))
+        
+        return results
     
-    return results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
 
 
 @app.delete("/products/{product_id}")
-async def delete_product(product_id: int, db: Session = Depends(get_db)):
+async def delete_product(
+    product_id: int, 
+    db: Session = Depends(get_db),
+    current_user: Auth0User = Depends(get_current_user)
+):
     """Delete a product."""
     product = db.query(Product).filter(Product.id == product_id).first()
     

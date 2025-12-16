@@ -3,22 +3,6 @@ from typing import Optional, List
 import numpy as np
 from PIL import Image
 
-# Ensure compatibility between sentence-transformers and huggingface_hub
-# Some versions of sentence-transformers import `cached_download` from
-# `huggingface_hub`. Newer `huggingface_hub` exposes `hf_hub_download` instead.
-# Provide a small runtime shim so older imports still work.
-try:
-    import huggingface_hub as _hf_hub
-    if not hasattr(_hf_hub, "cached_download") and hasattr(_hf_hub, "hf_hub_download"):
-        _hf_hub.cached_download = _hf_hub.hf_hub_download
-except Exception:
-    # If huggingface_hub isn't installed yet, the subsequent import of
-    # SentenceTransformer will surface a clear error. We silently ignore
-    # here to avoid masking that error.
-    pass
-
-from sentence_transformers import SentenceTransformer
-
 from shared.config import settings
 
 
@@ -29,20 +13,49 @@ class EmbeddingService:
         """Initialize embedding models."""
         self.multimodal_model = None
         self.text_model = None
-        self._load_models()
+        self._models_loaded = False
+        # Don't load models at initialization - load them lazily on first use
     
     def _load_models(self):
-        """Load embedding models."""
+        """Load embedding models lazily on first use."""
+        if self._models_loaded:
+            return
+        
         try:
+            # Import sentence_transformers only when needed
+            from sentence_transformers import SentenceTransformer
+            import traceback
+            
+            print("=" * 80)
+            print("Loading embedding models... (this may take 1-2 minutes on first run)")
+            print(f"  Multimodal model: {settings.embedding_model}")
+            print(f"  Text model: {settings.text_embedding_model}")
+            print("=" * 80)
+            
             # Load CLIP model for multimodal embeddings
+            print(f"Loading multimodal model: {settings.embedding_model}...")
             self.multimodal_model = SentenceTransformer(settings.embedding_model)
+            print(f"✓ Multimodal model loaded successfully")
             
             # Load text-only model for fallback
+            print(f"Loading text model: {settings.text_embedding_model}...")
             self.text_model = SentenceTransformer(settings.text_embedding_model)
+            print(f"✓ Text model loaded successfully")
             
-            print("Embedding models loaded successfully")
+            self._models_loaded = True
+            print("=" * 80)
+            print("✓✓✓ ALL EMBEDDING MODELS LOADED SUCCESSFULLY ✓✓✓")
+            print("=" * 80)
         except Exception as e:
-            print(f"Error loading embedding models: {e}")
+            print("=" * 80)
+            print(f"❌❌❌ ERROR LOADING EMBEDDING MODELS ❌❌❌")
+            print(f"Error: {e}")
+            print(f"Error type: {type(e).__name__}")
+            print("\nFull traceback:")
+            traceback.print_exc()
+            print("=" * 80)
+            print("⚠ API will start but ML features will be unavailable")
+            print("=" * 80)
     
     def generate_multimodal_embedding(
         self, 
@@ -60,6 +73,9 @@ class EmbeddingService:
             Embedding vector or None if failed
         """
         try:
+            # Load models on first use
+            self._load_models()
+            
             if image is not None and self.multimodal_model:
                 # For CLIP, we encode text and image separately then combine
                 text_features = self.multimodal_model.encode(text, convert_to_tensor=True)
@@ -88,6 +104,9 @@ class EmbeddingService:
             Embedding vector or None if failed
         """
         try:
+            # Load models on first use
+            self._load_models()
+            
             if self.text_model:
                 features = self.text_model.encode(text)
                 return features

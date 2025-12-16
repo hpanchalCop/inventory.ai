@@ -1,0 +1,25 @@
+{
+  "DeploymentDate": "2025-12-15 15:26:11",
+  "TaskRoleArn": "arn:aws:iam::030540333303:role/inventory-ai-ecs-task-role",
+  "ECSSecurityGroup": "sg-05162d5db2e3898ee",
+  "RDSSecurityGroup": "sg-05fa90e4b9661e9cd",
+  "TaskExecutionRoleArn": "arn:aws:iam::030540333303:role/inventory-ai-ecs-task-execution-role",
+  "ECSCluster": "arn:aws:ecs:us-east-1:030540333303:cluster/inventory-ai-cluster",
+  "Services": {
+    "Dashboard": {
+      "ECRUri": "030540333303.dkr.ecr.us-east-1.amazonaws.com/inventory-ai/dashboard",
+      "TargetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:030540333303:targetgroup/inventory-ai-dashboard-tg/4dd87929f223c37f",
+      "ServiceArn": "arn:aws:ecs:us-east-1:030540333303:service/inventory-ai-cluster/inventory-ai-dashboard-service",
+      "TaskDefArn": "arn:aws:ecs:us-east-1:030540333303:task-definition/inventory-ai-dashboard:6"
+    }
+  },
+  "Region": "us-east-1",
+  "SecretArn": "arn:aws:secretsmanager:us-east-1:030540333303:secret:inventory-ai/prod/env-E26P2V",
+  "RDSPassword": "InventoryDB2143!Pass",
+  "ALBArn": "arn:aws:elasticloadbalancing:us-east-1:030540333303:loadbalancer/app/inventory-ai-alb/a11bec0b199a9214",
+  "VpcId": "vpc-02298a9bd94ceb77b",
+  "ALBEndpoint": "inventory-ai-alb-755465244.us-east-1.elb.amazonaws.com",
+  "ListenerArn": "arn:aws:elasticloadbalancing:us-east-1:030540333303:listener/app/inventory-ai-alb/a11bec0b199a9214/7e37dcb4544b6216",
+  "RDSEndpoint": "inventory-ai-db.cwjko2wgq241.us-east-1.rds.amazonaws.com",
+  "ALBSecurityGroup": "sg-0b231aa192331a179"
+}
